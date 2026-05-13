@@ -10,7 +10,7 @@ import io
 import tempfile
 import base64
 
-load_dotenv("../.env")
+load_dotenv("../.env", override=False)
 
 app = FastAPI()
 groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
