@@ -15,7 +15,8 @@ load_dotenv("../.env", override=False)
 app = FastAPI()
 groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+DID_API_KEY = os.getenv("DID_API_KEY")
+LUNA_IMAGE_URL = "https://i.imgur.com/med0l1n.jpeg"
 
 app.add_middleware(
     CORSMiddleware,
@@ -74,4 +75,46 @@ async def chat_and_speak(data: ChatRequest):
         max_tokens=150
     )
     reply = response.choices[0].message.content
-    return {"reply": reply}
+
+    # Generate talking video with D-ID
+    async with httpx.AsyncClient() as http:
+        did_response = await http.post(
+            "https://api.d-id.com/talks",
+            headers={
+                "Authorization": f"Basic {DID_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "source_url": LUNA_IMAGE_URL,
+                "script": {
+                    "type": "text",
+                    "input": reply,
+                    "provider": {
+                        "type": "microsoft",
+                        "voice_id": "en-US-JennyNeural"
+                    }
+                },
+                "config": {"fluent": True, "pad_audio": 0}
+            },
+            timeout=30
+        )
+        did_data = did_response.json()
+        talk_id = did_data.get("id")
+
+    # Poll for video result
+    video_url = None
+    if talk_id:
+        async with httpx.AsyncClient() as http:
+            for _ in range(20):
+                import asyncio
+                await asyncio.sleep(2)
+                status_res = await http.get(
+                    f"https://api.d-id.com/talks/{talk_id}",
+                    headers={"Authorization": f"Basic {DID_API_KEY}"}
+                )
+                status_data = status_res.json()
+                if status_data.get("status") == "done":
+                    video_url = status_data.get("result_url")
+                    break
+
+    return {"reply": reply, "video_url": video_url}
