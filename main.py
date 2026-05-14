@@ -64,6 +64,7 @@ async def transcribe(file: UploadFile = File(...)):
 
 @app.post("/chat-and-speak")
 async def chat_and_speak(data: ChatRequest):
+    import asyncio
     messages = [{"role": "system", "content": SYSTEM_PROMPT + f"\n\nCurrent scenario: {data.scenario}"}]
     for h in data.history:
         messages.append(h)
@@ -76,45 +77,40 @@ async def chat_and_speak(data: ChatRequest):
     )
     reply = response.choices[0].message.content
 
-    # Generate talking video with D-ID
-    async with httpx.AsyncClient() as http:
-        did_response = await http.post(
-            "https://api.d-id.com/talks",
-            headers={
-                "Authorization": f"Basic {DID_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "source_url": LUNA_IMAGE_URL,
-                "script": {
-                    "type": "text",
-                    "input": reply,
-                    "provider": {
-                        "type": "microsoft",
-                        "voice_id": "en-US-JennyNeural"
-                    }
-                },
-                "config": {"fluent": True, "pad_audio": 0}
-            },
-            timeout=30
-        )
-        did_data = did_response.json()
-        talk_id = did_data.get("id")
-
-    # Poll for video result
+    # Generate D-ID talking video
     video_url = None
-    if talk_id:
-        async with httpx.AsyncClient() as http:
-            for _ in range(20):
-                import asyncio
-                await asyncio.sleep(2)
-                status_res = await http.get(
-                    f"https://api.d-id.com/talks/{talk_id}",
-                    headers={"Authorization": f"Basic {DID_API_KEY}"}
+    if DID_API_KEY:
+        try:
+            async with httpx.AsyncClient() as http:
+                did_response = await http.post(
+                    "https://api.d-id.com/talks",
+                    headers={"Authorization": f"Basic {DID_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "source_url": LUNA_IMAGE_URL,
+                        "script": {
+                            "type": "text",
+                            "input": reply,
+                            "provider": {"type": "microsoft", "voice_id": "en-US-JennyNeural"}
+                        },
+                        "config": {"fluent": True, "pad_audio": 0}
+                    },
+                    timeout=15
                 )
-                status_data = status_res.json()
-                if status_data.get("status") == "done":
-                    video_url = status_data.get("result_url")
-                    break
+                talk_id = did_response.json().get("id")
+
+            if talk_id:
+                async with httpx.AsyncClient() as http:
+                    for _ in range(15):
+                        await asyncio.sleep(2)
+                        res = await http.get(
+                            f"https://api.d-id.com/talks/{talk_id}",
+                            headers={"Authorization": f"Basic {DID_API_KEY}"}
+                        )
+                        d = res.json()
+                        if d.get("status") == "done":
+                            video_url = d.get("result_url")
+                            break
+        except Exception:
+            pass
 
     return {"reply": reply, "video_url": video_url}
