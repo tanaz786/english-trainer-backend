@@ -16,7 +16,7 @@ app = FastAPI()
 groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 DID_API_KEY = os.getenv("DID_API_KEY")
-LUNA_IMAGE_URL = "https://i.imgur.com/med0l1n.jpeg"
+LUNA_IMAGE_URL = "https://raw.githubusercontent.com/tanaz786/english-trainer-backend/main/luna.jpg"
 
 app.add_middleware(
     CORSMiddleware,
